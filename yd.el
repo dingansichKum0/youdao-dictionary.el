@@ -1,4 +1,4 @@
-;;; youdao-dictionary.el --- Youdao Dictionary interface for Emacs  -*- lexical-binding: t; -*-
+;;; yd.el --- Youdao Dictionary interface for Emacs  -*- lexical-binding: t; -*-
 
 ;; Copyright © 2015-2017 Chunyang Xu
 
@@ -27,20 +27,20 @@
 ;; A simple Youdao Dictionary interface for Emacs
 ;;
 ;; Below are commands you can use:
-;; `youdao-dictionary-search-at-point'
+;; `yd-search-at-point'
 ;; Search word at point and display result with buffer
-;; `youdao-dictionary-search-at-point+'
+;; `yd-search-at-point+'
 ;; Search word at point and display result with popup-tip
-;; `youdao-dictionary-search-from-input'
+;; `yd-search-from-input'
 ;; Search word from input and display result with buffer
-;; `youdao-dictionary-search-and-replace'
+;; `yd-search-and-replace'
 ;; Search word at point and display result with popup-menu, replace word with
 ;; selected translation.
-;; `youdao-dictionary-play-voice-at-point'
+;; `yd-play-voice-at-point'
 ;; Play voice of word at point (by [[https://github.com/snyh][@snyh]])
-;; `youdao-dictionary-play-voice-from-input'
+;; `yd-play-voice-from-input'
 ;; Play voice of word from input (by [[https://github.com/snyh][@snyh]])
-;; `youdao-dictionary-search-at-point-tooltip'
+;; `yd-search-at-point-tooltip'
 ;; Search word at point and display result with pos-tip
 
 ;;; Code:
@@ -50,106 +50,111 @@
 (require 'chinese-word-at-point)
 (require 'popup)
 (require 'pos-tip)
-(eval-when-compile (require 'names))
+;; (eval-when-compile (require 'names))
 
 (declare-function pdf-view-active-region-text "pdf-view" ())
 (declare-function pdf-view-active-region-p "pdf-view" ())
 (declare-function posframe-delete "posframe")
 (defvar url-http-response-status)
 
-(defgroup youdao-dictionary nil
+(defgroup yd nil
   "Youdao dictionary interface for Emacs."
-  :prefix "youdao-dictionary-"
+  :prefix "yd-"
   :group 'tools
   :link '(url-link :tag "Github" "https://github.com/xuchunyang/youdao-dictionary.el"))
 
-;;;###autoload
-(define-namespace youdao-dictionary-
 
-(defconst api-url
+(defconst yd-api-url
   "http://fanyi.youdao.com/openapi.do?keyfrom=YouDaoCV&key=659600698&type=data&doctype=json&version=1.1&q=%s"
   "Youdao dictionary API template, URL `http://dict.youdao.com/'.")
 
-(defconst api-url-v3
+(defconst yd-api-url-v3
   "https://openapi.youdao.com/api"
   "Youdao dictionary API template, URL `http://dict.youdao.com/'.")
 
-(defconst voice-url
+(defconst yd-voice-url
   "http://dict.youdao.com/dictvoice?type=2&audio=%s"
   "Youdao dictionary API for query the voice of word.")
 
-(defcustom secret-key (getenv "YOUDAO_SECRET_KEY")
+(defcustom yd-secret-key (getenv "YOUDAO_SECRET_KEY")
   "Youdao dictionary Secret Key. You can get it from ai.youdao.com."
   :type 'string)
 
-(defcustom app-key (getenv "YOUDAO_APP_KEY")
+(defcustom yd-app-key (getenv "YOUDAO_APP_KEY")
   "Youdao dictionary App Key. You can get it from ai.youdao.com."
   :type 'string)
 
-(defconst sign-type "v3"
-  "Youdao dictionary sign type")
+(defconst yd-sign-type "v3" "Youdao dictionary sign type.")
 
-(defcustom from "auto"
-  "Source language. see http://ai.youdao.com/DOCSIRMA/html/%E8%87%AA%E7%84%B6%E8%AF%AD%E8%A8%80%E7%BF%BB%E8%AF%91/API%E6%96%87%E6%A1%A3/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1-API%E6%96%87%E6%A1%A3.html"
+(defcustom yd-from "auto"
+  "Source language. see http://ai.youdao.com/DOCSIRMA/html/%E8%87%AA%E7%84%B6%E8%AF%AD%E8%A8%80%E7%BF%BB%E8%AF%91/API%E6%96%87%E6%A1%A3/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1-API%E6%96%87%E6%A1%A3.html."
   :type 'string)
 
-(defcustom to "auto"
-  "dest language. see http://ai.youdao.com/DOCSIRMA/html/%E8%87%AA%E7%84%B6%E8%AF%AD%E8%A8%80%E7%BF%BB%E8%AF%91/API%E6%96%87%E6%A1%A3/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1-API%E6%96%87%E6%A1%A3.html"
+(defcustom yd-to "auto"
+  "Dest language. see http://ai.youdao.com/DOCSIRMA/html/%E8%87%AA%E7%84%B6%E8%AF%AD%E8%A8%80%E7%BF%BB%E8%AF%91/API%E6%96%87%E6%A1%A3/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1-API%E6%96%87%E6%A1%A3.html."
   :type 'string)
 
-(defcustom buffer-name "*Youdao Dictionary*"
+(defcustom yd-buffer-name "*Youdao Dictionary*"
   "Result Buffer name."
   :type 'string)
 
-(defcustom search-history-file nil
+(defcustom yd-search-history-file nil
   "If non-nil, the file be used for saving searching history."
   :type '(choice (const :tag "Don't save history" nil)
                  (string :tag "File path")))
 
-(defcustom use-chinese-word-segmentation nil
+(defcustom yd-use-chinese-word-segmentation nil
   "If Non-nil, support Chinese word segmentation(中文分词).
 
 See URL `https://github.com/xuchunyang/chinese-word-at-point.el' for more info."
   :type 'boolean)
 
-(defface posframe-tip-face
+(defface yd-posframe-tip-face
   '((t (:inherit tooltip)))
   "Face for posframe tip."
-  :group 'youdao-dictionary)
+  :group 'yd)
 
-(defun get-salt ()
+
+(defun yd-get-salt ()
+  "Get Salt by random number."
   (number-to-string (random 1000)))
 
-(defun get-curtime ()
-  (format-time-string "%s"))
 
-(defun get-input (word)
-  (let ((len (length word)))
+(defun yd-get-input (arg)
+  "Handle ARG by arg's length."
+  (let ((len (length arg)))
     (if (> len 20)
-        (concat (substring word 0 10)
+        (concat (substring arg 0 10)
                 (number-to-string len)
-                (substring word -10))
-      word)))
+                (substring arg -10))
+      arg)))
 
-(defun get-sign (salt curtime word)
-  (let* ((input (get-input word))
-         (signstr (concat app-key input salt curtime secret-key)))
+
+(defun yd-get-sign (salt time word)
+  "Get sign by SALT, current TIME and WORD."
+  (let* ((input (yd-get-input word))
+         (signstr (concat yd-app-key input salt time yd-secret-key)))
     (secure-hash 'sha256 signstr)))
 
-(defun -format-voice-url (query-word)
+
+(defun yd-format-voice-url (query-word)
   "Format QUERY-WORD as voice url."
-  (format voice-url (url-hexify-string query-word)))
+  (format yd-voice-url (url-hexify-string query-word)))
 
-(defun -request-v3-p ()
-  (and app-key secret-key))
 
-(defun -format-request-url (query-word)
+(defun yd-request-v3-p ()
+  "Check if v3."
+  (and yd-app-key yd-secret-key))
+
+
+(defun yd-format-request-url (query-word)
   "Format QUERY-WORD as a HTTP request URL."
-  (if (-request-v3-p)
-      api-url-v3
-    (format api-url (url-hexify-string query-word))))
+  (if (yd-request-v3-p)
+      yd-api-url-v3
+    (format yd-api-url (url-hexify-string query-word))))
 
-(defun -parse-response ()
+
+(defun yd-parse-response ()
   "Parse response as JSON."
   (set-buffer-multibyte t)
   (goto-char (point-min))
@@ -159,52 +164,57 @@ See URL `https://github.com/xuchunyang/chinese-word-at-point.el' for more info."
   (prog1 (json-read)
     (kill-buffer (current-buffer))))
 
-(defun -request (word &optional callback)
-  "Request WORD, return JSON as an alist if successes."
-  (when (and search-history-file (file-writable-p search-history-file))
+
+(defun yd-request (word &optional callback)
+  "Request WORD, return JSON as an alist if successes.
+CALLBACK: function of after response."
+  (when (and yd-search-history-file (file-writable-p yd-search-history-file))
     ;; Save searching history
-    (append-to-file (concat word "\n") nil search-history-file))
-  (let* ((salt (get-salt))
-         (curtime (get-curtime))
-         (sign (get-sign salt curtime word))
-         (url-request-data (when (-request-v3-p)
+    (append-to-file (concat word "\n") nil yd-search-history-file))
+  (let* ((salt (yd-get-salt))
+         (curtime (format-time-string "%s"))
+         (sign (yd-get-sign salt curtime word))
+         (url-request-data (when (yd-request-v3-p)
                              (mapconcat #'identity (list (concat "q=" (url-hexify-string word))
-                                                (concat "from=" from)
-                                                (concat "to=" to)
-                                                (concat "appKey=" app-key)
-                                                (concat "salt=" salt)
-                                                (concat "sign=" (url-hexify-string sign))
-                                                (concat "signType=" sign-type)
-                                                (concat "curtime=" curtime))
-                                          "&" )))
-         (url-request-method (when (-request-v3-p)
+                                                         (concat "from=" yd-from)
+                                                         (concat "to=" yd-to)
+                                                         (concat "appKey=" yd-app-key)
+                                                         (concat "salt=" salt)
+                                                         (concat "sign=" (url-hexify-string sign))
+                                                         (concat "signType=" yd-sign-type)
+                                                         (concat "curtime=" curtime))
+                                        "&" )))
+         (url-request-method (when (yd-request-v3-p)
                                "POST"))
-         (url-request-extra-headers (when (-request-v3-p)
+         (url-request-extra-headers (when (yd-request-v3-p)
                                       '(("Content-Type" . "application/x-www-form-urlencoded")))))
     (if callback
-        (url-retrieve (-format-request-url word) callback)
-      (with-current-buffer (url-retrieve-synchronously (-format-request-url word))
-        (-parse-response)))))
+        (url-retrieve (yd-format-request-url word) callback)
+      (with-current-buffer (url-retrieve-synchronously (yd-format-request-url word))
+        (yd-parse-response)))))
 
-(defun -explains (json)
+
+(defun yd-explains (json)
   "Return explains as a vector extracted from JSON."
-  (cdr (assoc 'explains (cdr (assoc 'basic json)))))
+  (cdr (assoc 'yd-explains (cdr (assoc 'basic json)))))
 
-(defun -prompt-input ()
+
+(defun yd-prompt-input ()
   "Prompt input object for translate."
-  (let ((current-word (-region-or-word)))
+  (let ((current-word (yd-region-or-word)))
     (read-string (format "Word (%s): "
                          (or current-word ""))
                  nil nil
                  current-word)))
 
-(defun -strip-explain (explain)
-  "Remove unneed info in EXPLAIN for replace.
 
-i.e. `[语][计] dictionary' => 'dictionary'."
+(defun yd-strip-explain (explain)
+  "Remove unneed info in EXPLAIN for replace.
+i.e. \"[语][计] dictionary\" => \"dictionary\"."
   (replace-regexp-in-string "^[[].* " "" explain))
 
-(defun -region-or-word ()
+
+(defun yd-region-or-word ()
   "Return word in region or word at point."
   (if (derived-mode-p 'pdf-view-mode)
       (if (pdf-view-active-region-p)
@@ -212,12 +222,13 @@ i.e. `[语][计] dictionary' => 'dictionary'."
     (if (use-region-p)
         (buffer-substring-no-properties (region-beginning)
                                         (region-end))
-      (thing-at-point (if use-chinese-word-segmentation
+      (thing-at-point (if yd-use-chinese-word-segmentation
                           'chinese-or-other-word
                         'word)
                       t))))
 
-(defun -format-result (json)
+
+(defun yd-format-result (json)
   "Format result in JSON."
   (let* ((query        (assoc-default 'query       json)) ; string
          (translation  (assoc-default 'translation json)) ; array
@@ -244,31 +255,33 @@ i.e. `[语][计] dictionary' => 'dictionary'."
       (format "%s\n\n* Translation\n%s\n"
               query translation-str))))
 
-(defun -pos-tip (string)
+
+(defun yd-pos-tip (string)
   "Show STRING using pos-tip-show."
   (pos-tip-show string nil nil nil 0)
   (unwind-protect
       (push (read-event) unread-command-events)
     (pos-tip-hide)))
 
-(defvar current-buffer-word nil)
 
-(defun -posframe-tip (string)
+(defvar yd-current-buffer-word nil)
+
+(defun yd-posframe-tip (string)
   "Show STRING using posframe-show."
   (unless (and (require 'posframe nil t) (posframe-workable-p))
     (error "Posframe not workable"))
 
-  (let ((word (-region-or-word)))
+  (let ((word (yd-region-or-word)))
     (if word
         (progn
-          (with-current-buffer (get-buffer-create buffer-name)
+          (with-current-buffer (get-buffer-create yd-buffer-name)
             (let ((inhibit-read-only t))
               (erase-buffer)
-              (mode)
+              (yd-mode)
               (insert string)
               (goto-char (point-min))
-              (set (make-local-variable 'youdao-dictionary-current-buffer-word) word)))
-          (posframe-show buffer-name
+              (set (make-local-variable 'yd-current-buffer-word) word)))
+          (posframe-show yd-buffer-name
                          :left-fringe 8
                          :right-fringe 8
                          :internal-border-color (face-foreground 'default)
@@ -276,101 +289,112 @@ i.e. `[语][计] dictionary' => 'dictionary'."
           (unwind-protect
               (push (read-event) unread-command-events)
             (progn
-              (posframe-delete buffer-name)
+              (posframe-delete yd-buffer-name)
               (other-frame 0))))
       (message "Nothing to look up"))))
 
-(defun play-voice-of-current-word ()
+
+(defun yd-play-voice-of-current-word ()
   "Play voice of current word shown in *Youdao Dictionary*."
   (interactive)
-  (if (local-variable-if-set-p 'youdao-dictionary-current-buffer-word)
-      (-play-voice current-buffer-word)))
+  (if (local-variable-if-set-p 'yd-current-buffer-word)
+      (yd-play-voice yd-current-buffer-word)))
 
-(define-derived-mode mode org-mode "Youdao-dictionary"
+
+(define-derived-mode yd-mode org-mode "Youdao-dictionary"
   "Major mode for viewing Youdao dictionary result.
-\\{youdao-dictionary-mode-map}"
+\\{yd-mode-map}"
   (read-only-mode 1)
-  (define-key mode-map "q" 'quit-window)
-  (define-key mode-map "p" 'youdao-dictionary-play-voice-of-current-word)
-  (define-key mode-map "y" 'youdao-dictionary-play-voice-at-point))
+  (define-key yd-mode-map "q" 'quit-window)
+  (define-key yd-mode-map "p" 'yd-play-voice-of-current-word)
+  (define-key yd-mode-map "y" 'yd-play-voice-at-point))
 
-(defun -search-and-show-in-buffer-subr (word content)
-  (with-current-buffer (get-buffer-create buffer-name)
+
+(defun yd-search-and-show-in-buffer-subr (word content)
+  "Open buffer and render content of response by WORD and CONTENT."
+  (with-current-buffer (get-buffer-create yd-buffer-name)
     (let ((inhibit-read-only t))
       (erase-buffer)
-      (mode)
+      (yd-mode)
       (insert content)
       (goto-char (point-min))
-      (set (make-local-variable 'youdao-dictionary-current-buffer-word) word))
+      (set (make-local-variable 'yd-current-buffer-word) word))
     (unless (get-buffer-window (current-buffer))
-      (switch-to-buffer-other-window buffer-name))))
+      (switch-to-buffer-other-window yd-buffer-name))))
 
-(defun -search-and-show-in-buffer (word &optional async)
-  "Search WORD and show result in `youdao-dictionary-buffer-name' buffer."
+
+(defun yd-search-and-show-in-buffer (word &optional async)
+  "Search WORD and show result in `yd-buffer-name' buffer.
+After response be called if ASYNC is no nil."
   (unless word
     (user-error "Nothing to look up"))
   (if async
-      (-request word (lambda (_status)
-                       (-search-and-show-in-buffer-subr
-                        word
-                        (-format-result (-parse-response)))))
-    (-search-and-show-in-buffer-subr word (-format-result (-request word)))))
+      (yd-request word (lambda (_status)
+                         (yd-search-and-show-in-buffer-subr
+                          word
+                          (yd-format-result (yd-parse-response)))))
+    (yd-search-and-show-in-buffer-subr word (yd-format-result (yd-request word)))))
 
-:autoload
-(defun search-at-point ()
+
+;;;###autoload
+(defun yd-search-at-point ()
   "Search word at point and display result with buffer."
   (interactive)
-  (let ((word (-region-or-word)))
-    (-search-and-show-in-buffer word)))
+  (let ((word (yd-region-or-word)))
+    (yd-search-and-show-in-buffer word)))
 
-(defun search-at-point- (func)
+(defun yd-search-at-point- (func)
   "Search word at point and display result with given FUNC."
-  (let ((word (-region-or-word)))
+  (let ((word (yd-region-or-word)))
     (if word
-        (funcall func (-format-result (-request word)))
+        (funcall func (yd-format-result (yd-request word)))
       (message "Nothing to look up"))))
 
-:autoload
-(defun search-at-point+ ()
+
+;;;###autoload
+(defun yd-search-at-point+ ()
   "Search word at point and display result with popup-tip."
   (interactive)
-  (search-at-point- #'popup-tip))
+  (yd-search-at-point- #'popup-tip))
 
-:autoload
-(defun search-at-point-posframe ()
+;;;###autoload
+(defun yd-search-at-point-posframe ()
   "Search word at point and display result with posframe."
   (interactive)
-  (search-at-point- #'-posframe-tip))
+  (yd-search-at-point- #'yd-posframe-tip))
 
-:autoload
-(defun search-at-point-tooltip ()
+
+;;;###autoload
+(defun yd-search-at-point-tooltip ()
   "Search word at point and display result with pos-tip."
   (interactive)
-  (search-at-point- #'-pos-tip))
+  (yd-search-at-point- #'yd-pos-tip))
 
-:autoload
-(defun search-from-input ()
+
+;;;###autoload
+(defun yd-search-from-input ()
   "Search word from input and display result with buffer."
   (interactive)
-  (let ((word (-prompt-input)))
-    (-search-and-show-in-buffer word)))
+  (let ((word (yd-prompt-input)))
+    (yd-search-and-show-in-buffer word)))
 
-:autoload
-(defun search-and-replace ()
+
+;;;###autoload
+(defun yd-search-and-replace ()
   "Search word at point and replace this word with popup menu."
   (interactive)
   (if (use-region-p)
       (let ((region-beginning (region-beginning)) (region-end (region-end))
-            (selected (popup-menu* (mapcar #'-strip-explain
-                                           (append (-explains
-                                                    (-request
-                                                     (-region-or-word)))
+            (selected (popup-menu* (mapcar #'yd-strip-explain
+                                           (append (yd-explains
+                                                    (yd-request
+                                                     (yd-region-or-word)))
                                                    nil)))))
         (when selected
           (insert selected)
           (kill-region region-beginning region-end)))
     ;; No active region
-    (let* ((bounds (bounds-of-thing-at-point (if use-chinese-word-segmentation
+    (let* ((bounds (bounds-of-thing-at-point (if yd-use-chinese-word-segmentation
                                                  'chinese-or-other-word
                                                'word)))
            (beginning-of-word (car bounds))
@@ -378,11 +402,11 @@ i.e. `[语][计] dictionary' => 'dictionary'."
       (when bounds
         (let ((selected
                (popup-menu* (mapcar
-                             #'-strip-explain
-                             (append (-explains
-                                      (-request
+                             #'yd-strip-explain
+                             (append (yd-explains
+                                      (yd-request
                                        (thing-at-point
-                                        (if use-chinese-word-segmentation
+                                        (if yd-use-chinese-word-segmentation
                                             'chinese-or-other-word
                                           'word))))
                                      nil)))))
@@ -390,64 +414,61 @@ i.e. `[语][计] dictionary' => 'dictionary'."
             (insert selected)
             (kill-region beginning-of-word end-of-word)))))))
 
-(defvar history nil)
 
-:autoload
-(defun search (query)
+(defvar yd-history nil)
+
+;;;###autoload
+(defun yd-search (query)
   "Show the explanation of QUERY from Youdao dictionary."
   (interactive
    (let* ((string (or (if (use-region-p)
                           (buffer-substring
                            (region-beginning) (region-end))
                         (thing-at-point 'word))
-                      (read-string "Search Youdao Dictionary: " nil 'history))))
+                      (read-string "Search Youdao Dictionary: " nil 'yd-history))))
      (list string)))
-  (-search-and-show-in-buffer query))
+  (yd-search-and-show-in-buffer query))
 
-:autoload
-(defun search-async (query)
+
+;;;###autoload
+(defun yd-search-async (query)
   "Show the explanation of QUERY from Youdao dictionary asynchronously."
   (interactive
    (let* ((string (or (if (use-region-p)
                           (buffer-substring
                            (region-beginning) (region-end))
                         (thing-at-point 'word))
-                      (read-string "Search Youdao Dictionary: " nil 'history))))
+                      (read-string "Search Youdao Dictionary: " nil 'yd-history))))
      (list string)))
-  (-search-and-show-in-buffer query 'async))
+  (yd-search-and-show-in-buffer query 'async))
 
-(defun -play-voice (word)
+
+(defun yd-play-voice (word)
   "Play voice of the WORD if there has mplayer or mpg123 program."
   (let ((player (or (executable-find "mpv")
                     (executable-find "mplayer")
                     (executable-find "mpg123"))))
     (if player
-        (start-process player nil player (-format-voice-url word))
-      (user-error "mplayer or mpg123 is needed to play word voice"))))
+        (start-process player nil player (yd-format-voice-url word))
+      (user-error "Mplayer or mpg123 is needed to play word voice"))))
 
-:autoload
-(defun play-voice-at-point ()
+
+;;;###autoload
+(defun yd-play-voice-at-point ()
   "Play voice of the word at point."
   (interactive)
-  (let ((word (-region-or-word)))
-    (-play-voice word)))
+  (let ((word (yd-region-or-word)))
+    (yd-play-voice word)))
 
-:autoload
-(defun play-voice-from-input ()
+
+;;;###autoload
+(defun yd-play-voice-from-input ()
   "Play voice of user input word."
   (interactive)
-  (let ((word (-prompt-input)))
-    (-play-voice word)))
+  (let ((word (yd-prompt-input)))
+    (yd-play-voice word)))
 
 
-)
+(provide 'yd)
 
-
-(provide 'youdao-dictionary)
-
-;; Local Variables:
-;; coding: utf-8
-;; indent-tabs-mode: nil
-;; End:
-
-;;; youdao-dictionary.el ends here
+;;; yd.el ends here
